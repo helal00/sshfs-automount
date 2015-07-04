@@ -1,0 +1,230 @@
+#!/usr/bin/env bash
+#Copyright (C) 2015  Helal Uddin <helal00 at gmail.com>
+#This program is free software: you can redistribute it and/or modify
+#it under the terms of the GNU General Public License as published by
+#the Free Software Foundation, either version 3 of the License, or
+#(at your option) any later version.
+#
+#This program is distributed in the hope that it will be useful,
+#but WITHOUT ANY WARRANTY; without even the implied warranty of
+#MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#GNU General Public License for more details.
+#
+#You should have received a copy of the GNU General Public License
+#along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+
+_srcsbinpath=$(dirname $(readlink -f $0))
+_srchomepath=$(dirname $_srcsbinpath)
+_serverlistfile="serverlist.txt"
+mkdir -p "$_srcsbinpath/.store"
+_mountedfile="$_srcsbinpath/.store/mounted"
+_deafultcachetime="7200"
+_userhome=$HOME
+
+if [ -s "$_srcsbinpath/functions" ] ; then
+	. $_srcsbinpath/functions	
+else
+	echo "$_srcsbinpath/functions file not found!" 1>&2
+	exit 1
+fi
+
+_ask=$1
+_ask=${_ask,,}
+_askforlong="no"
+_sockpattern=""
+_runascron=""
+if [ ! -z "$_ask" ] && [ "$_ask" = "ask" ] ; then
+_askforlong="yes"
+elif [ ! -z "$_ask" ] && [ "$_ask" = "ascron" ] ; then
+_runascron="yes"
+else
+	if [ ! -z $1 ] ; then
+		_sockpattern="$1"
+	fi
+fi
+
+_osname=$(getosname)
+_sshfs=$(command -v sshfs)
+if [ -z "$_sshfs" ] ; then
+	if [ ! -z "$_osname" ] ; then
+		if [ "$_osname" != "debian" ] && [ "$_osname" != "ubuntu" ] ; then
+			echo "	ERROR: Operating system not officially supported, sshfs need to be installed by yourself. Fully supported version is Debian 7 (wheezy) or Ubuntu 14.04 (truesty) or up. Please install sshfs for your distro to use this utility. e.g. sudo apt-get -y install sshfs" 1>&2
+			exit 1
+		else
+			if [ ! -z "$_runascron" ] ; then
+				echo "sshfs not installed, we can't install now as this script is running as cron job. Please run it from terminal to install sshfs." 1>&2
+				exit 1
+			else
+				sudo apt-get -y install sshfs
+				if [ $? -ne 0 ] ; then
+					echo "sshfs can't be installed properly, there is some error. Please install it yourselft to continue." 1>&2
+					exit 1
+				fi
+			fi
+		fi
+	else
+		echo "	ERROR: Operating system not supported, sshfs need to be installed by yourself. Fully supported version is Debian 7 (wheezy) or Ubuntu 14.04 (truesty) or up. Please install sshfs for your distro to use this utility. e.g. sudo apt-get -y install sshfs" 1>&2
+		exit 1
+	fi
+fi
+
+if [ -f "$_srcsbinpath/$_serverlistfile" ] ; then
+	_serverlist="$_srcsbinpath/$_serverlistfile"
+elif [ -f "$_srchomepath/$_serverlistfile" ] ; then
+	_serverlist="$_srchomepath/$_serverlistfile"
+elif [ -f "$_userhome/$_serverlistfile" ] ; then
+	_serverlist="$_userhome/$_serverlistfile"
+else
+	echo "No $_serverlistfile file found in current, previuos or home directory. Create $_serverlistfile file in any of those locations and enter server info as 'user@xxx.xxx.xxx.xxx:/|~/mymounts/mainserver[|long[|time in seconds]]' per line. Things in [] is optional."
+	exit 1
+fi
+
+
+
+if [ -z "$SSH_AUTH_SOCK" ] ; then
+
+	if [ -z "$_sockpattern" ] &&  [ -f $_srcsbinpath/.store/agentpattern ]; then
+		_sockpattern=$(cat $_srcsbinpath/.store/agentpattern)
+	fi
+
+	if [ ! -z "$_sockpattern" ] ; then
+		_agentdir=""
+		_agent=""
+		if [ ${_sockpattern:0:9} != "/tmp/ssh-" ] ; then
+			_agentfilename=${_sockpattern##*/}
+			_agentpath=$(dirname $_sockpattern)
+			_basedirname=${_agentpath##*/}
+			_prefix=${_basedirname%%-*}
+			_basedir=$(dirname $_agentpath)
+			_myname="$(whoami)"
+			getnewest "${_basedir}" "${_prefix}-*" "_agentdir" "$_myname" && getnewest "$_agentdir" "$_agentfilename" "_agent" "$_myname"
+		elif [ ${_sockpattern:0:9} = "/tmp/ssh-" ] ; then
+			getnewest "/tmp" "ssh-" "_agentdir" "$_myname" && getnewest "$_agentdir" "agent" "_agent" "$_myname"
+		fi
+	
+		if [ ! -z "$_agent" ] ; then
+			SSH_AUTH_SOCK=$_agent
+			export SSH_AUTH_SOCK;
+		fi
+	fi
+fi
+
+if [ -z "$SSH_AUTH_SOCK" ] ; then
+	echo "	ERROR: No ssh-agent is currently running for $(whoami), sshfs will fail to connect remote servers automiatically without password" 1>&2
+	exit 1
+else
+	echo "$SSH_AUTH_SOCK" > $_srcsbinpath/.store/agentpattern
+fi
+
+readarray _paths < "$_serverlist"
+for ln in "${_paths[@]}"
+do
+	if [ "${ln:0:1}" = "#" ] ; then
+		continue
+	fi
+	#_pparts=($(echo "$ln" | tr "|" " " ))
+	
+	strtoarry "$ln" "_pparts" '|'
+	
+	if [ ${#_pparts[@]} -lt 2 ] ; then
+		continue
+	fi
+	_rpath=${_pparts[0]}
+	_mpath=${_pparts[1]}
+	_mpath=$(eval echo $_mpath)
+	_longcache="none"
+	_longcachetime="$_deafultcachetime"
+	if [ ${#_pparts[@]} -eq 3 ] ; then
+		_longcache=${_pparts[2]}
+		_longcache=${_longcache,,}
+		_longcachetime="$_deafultcachetime"
+	fi
+	
+	if [ ${#_pparts[@]} -eq 4 ] ; then
+		_longcachetime=${_pparts[3]}
+		if [ ! -n "$_longcachetime" ] || ! echo "$_longcachetime" | grep -q "^-\?[0-9]*$" ||  [ "$_longtime" -eq 0 ] ; then
+			_longcachetime="$_deafultcachetime"
+		fi
+		
+	fi
+	
+	_sshcred="${_rpath%:*}"
+	if [ ! -z "$_sshcred" ] ; then
+		_sshuser="${_sshcred%%@*}"
+		_sshhost="${_sshcred#*@}"
+	fi
+	if [ -z "$_sshcred" ] || [ -z "$_sshuser" ] || [ -z "$_sshhost" ] ; then
+		echo "Not a valid ssh path ${_rpath}. Valid format: user@host:/path/to" 1>&2
+		continue
+	fi
+	
+	_sshurl="ssh://${_sshuser}@${_sshhost}"
+	
+	if [ ! -f $_srcsbinpath/.store/knownhost ] || ! grep -q "${_sshurl}$" $_srcsbinpath/.store/knownhost ; then
+		if [ ! -z "$_runascron" ] ; then
+			echo "$_sshurl : host or user is not known. Ignoring. Please run this script in terminal to setup ssh for this user and host." 1>&2
+			continue
+		else
+			read -p "$_sshurl : host or user is not known. Press any key to run sshsetup....."
+			bash $_srcsbinpath/sshsetup "$_sshhost" "$_sshuser" "$_srcsbinpath/.store/knownhost"
+			if [ $? -ne 0 ] ; then
+				echo "sshsetup failed, pls try again with '$_srcsbinpath/sshsetup' command to continue." 1>&2
+				continue
+			fi
+		fi
+	fi
+	
+	if [ ! -d "$_mpath" ] && [ ! -f "$_mpath" ] && ! mountpoint -q "$_mpath" ; then
+		mkdir -p "$_mpath"
+	fi
+	if [ -d "$_mpath" ] && ! mountpoint -q "$_mpath" ; then
+
+		if [ "$_askforlong" = "yes" ] ; then
+			read -p "Do you want to mount this server: $_rpath with long cache? (yes/only press enter to cancel) : " _islongcache
+			_islongcache=${_islongcache,,}
+			if [ ! -z "$_islongcache" ] && [ "$_islongcache" = "yes" ] ; then
+				_longcache="long"
+				echo "setval: $_longcache"
+				read -p "How long cache in seconds you want to set? Default is 7200 second. (type any number/only press enter to take the default) : " _longtime
+				if [ ! -z "$_longtime" ] && [ -n "$_longtime" ] && echo "$_longtime" | grep -q "^-\?[0-9]*$" && [ "$_longtime" -gt 0 ]; then
+					_longcachetime="$_longtime"
+				else
+					_longcachetime="$_deafultcachetime"
+				fi
+			else
+				_longcache="none"
+			fi
+		fi
+		
+		if [ "$_longcache" = "long" ] ; then
+
+			echo "mounting with long cache timeout vale of $_longcachetime ...$_rpath to $_mpath"
+			nohup sshfs -o BatchMode=yes,reconnect,TCPKeepAlive=no,ServerAliveInterval=5,cache_timeout=$_longcachetime,cache_stat_timeout=$_longcachetime,cache_dir_timeout=$_longcachetime,cache_link_timeout=$_longcachetime,entry_timeout=$_longcachetime,negative_timeout=$_longcachetime,attr_timeout=$_longcachetime,ac_attr_timeout=$_longcachetime,kernel_cache,auto_cache,transform_symlinks "$_rpath" "$_mpath" &
+		else
+			
+			echo "mounting....$_rpath to $_mpath"
+			nohup sshfs -o BatchMode=yes,reconnect,TCPKeepAlive=no,ServerAliveInterval=5,auto_cache,transform_symlinks "$_rpath" "$_mpath" &
+
+		fi
+
+		if [ ! -f "$_mountedfile" ] || ! grep -q "$_mpath$"  "$_mountedfile" ; then
+				sed -i -e '$a\' "$_mountedfile"
+				echo "$_mpath" >> "$_mountedfile"
+		fi
+	else
+		if [ -d "$_mpath" ] ; then
+			echo "The path : $_mpath is already a mount point."
+			if [ ! -f "$_mountedfile" ] || ! grep -Fq "$_mpath"  "$_mountedfile" ; then
+				sed -i -e '$a\' "$_mountedfile"
+				echo "$_mpath" >> "$_mountedfile"
+			fi
+		else
+			echo "Error: The path : $_mpath is not a directory or is inaccessible." 1>&2
+		fi
+	fi
+done
+
+
+
+

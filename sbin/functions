@@ -1,0 +1,89 @@
+#!/usr/bin/env bash
+#Copyright (C) 2015  Helal Uddin <helal00 at gmail.com>
+#This program is free software: you can redistribute it and/or modify
+#it under the terms of the GNU General Public License as published by
+#the Free Software Foundation, either version 3 of the License, or
+#(at your option) any later version.
+#
+#This program is distributed in the hope that it will be useful,
+#but WITHOUT ANY WARRANTY; without even the implied warranty of
+#MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#GNU General Public License for more details.
+#
+#You should have received a copy of the GNU General Public License
+#along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+function escapepath(){
+	local _thep
+	_thep=$1
+	_thep=${_thep//\//\\/}
+	echo "$_thep"
+}
+
+function replaceline(){
+	local _pattern _replace _file
+	_pattern=$1
+	_replace=$2
+	_file=$3
+	sed -i "/$_pattern/ { c \
+	$_replace
+	}" "$_file"
+}
+
+function getowner(){
+	local _entry	
+	_entry="$1"	
+	if [ -z "$_entry" ] ||  [ ! -e "$_entry" ] ; then
+		echo ""
+	else
+		if [ -d "$_entry" ] ; then
+			echo $(ls -al "$_entry" | grep ' \.$' | awk '{print $3}')
+		else
+			echo $(ls -al "$_entry" | awk '{print $3}') 
+		fi
+	fi
+}
+
+function getnewest(){
+	
+	local _loc _pat _new _setvar _owner _ret
+	_loc=$1
+	_pat=$2
+	_setvar=$3
+	_owner=$4
+	
+	#echo "this $_loc $_pat $_setvar"
+	_ret=1
+	_new=""
+	for sp in $(ls -a ${_loc} | grep "${_pat}")
+	do
+		if [ -z "$_new" ] || [ "${_loc}/$sp" -nt "${_loc}/$_new" ] ; then
+			if [ ! -z "$_owner" ] ; then		
+				if [ "$_owner" = $(getowner "${_loc}/$_new") ] ; then
+					_new=$sp
+				fi
+			else
+				_new=$sp
+			fi
+		fi
+	done
+	if [ ! -z "$_new" ] ; then
+		eval $_setvar=${_loc}/$_new
+		_ret=0
+	fi
+	
+	return $_ret
+}
+
+function strtoarry(){
+	local _str _retarray _deli _c _l;_str=$1 _retarray=$2 _deli=$3
+	eval unset $_retarray
+	_c=-1;while read -r _l; do _c=$((_c+1));eval $_retarray[$_c]='$_l';done <<< "$(echo $_str | sed -e "s/$_deli/\n/g")"
+}
+
+function getosname(){
+	if [ -f /etc/os-release ] ; then
+		eval $(cat /etc/os-release | grep "ID")
+		echo $ID
+	fi
+}

@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+#Copyright (C) 2015  Helal Uddin <helal00 at gmail.com>
+#This program is free software: you can redistribute it and/or modify
+#it under the terms of the GNU General Public License as published by
+#the Free Software Foundation, either version 3 of the License, or
+#(at your option) any later version.
+#
+#This program is distributed in the hope that it will be useful,
+#but WITHOUT ANY WARRANTY; without even the implied warranty of
+#MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#GNU General Public License for more details.
+#
+#You should have received a copy of the GNU General Public License
+#along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+_srcsbinpath=$(dirname $(readlink -f $0))
+_srchomepath=$(dirname $_srcsbinpath) 
+
+_min=$1
+_defaultmin=20
+if [ -z "$_min" ] ; then
+read -p "$_srcsbinpath/runmountservers will run every how many minute? Type minute between [0-59] or only press enter to take default $_defaultmin minutes: " _hour
+fi
+if [ -n "$_min" ] && echo "$_min" | grep -q "^-\?[0-9]*$" && [ "$_min" -ge 0 ] && [ "$_min" -le 59 ] ; then
+	_interval="$_min"
+else
+	_interval=$_defaultmin
+fi
+
+if [ ! -z "$SSH_AUTH_SOCK" ] ; then
+	echo "$SSH_AUTH_SOCK" > $_srcsbinpath/.store/agentpattern
+else
+	echo "	ERROR: No ssh-agent is currently running, sshfs will fail to connect remote servers automiatically without password" 1>&2
+fi
+#write out current crontab
+crontab -l > $_srcsbinpath/mycron
+#echo new cron into cron file
+if ! grep -q "$_srcsbinpath/runmountservers" $_srcsbinpath/mycron ; then
+
+	echo "*/$_interval * * * * $_srcsbinpath/runmountservers" >> $_srcsbinpath/mycron
+	#install new cron file
+	crontab $_srcsbinpath/mycron
+	echo "$_srcsbinpath/runmountservers added to crontab successfully for every $_interval minute!!"
+else
+	echo "	WARNING: $_srcsbinpath/runmountservers already exist in crontab, no changes has been made!! To apply changes, please remove the existing job first with '$_srcsbinpath/delmcron' command." 1>&2	
+fi
+rm $_srcsbinpath/mycron
+

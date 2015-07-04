@@ -1,0 +1,248 @@
+#!/usr/bin/env bash
+#Copyright (C) 2015  Helal Uddin <helal00 at gmail.com>
+#This program is free software: you can redistribute it and/or modify
+#it under the terms of the GNU General Public License as published by
+#the Free Software Foundation, either version 3 of the License, or
+#(at your option) any later version.
+#
+#This program is distributed in the hope that it will be useful,
+#but WITHOUT ANY WARRANTY; without even the implied warranty of
+#MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#GNU General Public License for more details.
+#
+#You should have received a copy of the GNU General Public License
+#along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+_srcsbinpath=$(dirname $(readlink -f $0))
+_sshhost=$1
+_sshuser=$2
+_knownhostfile=$3
+
+if [ -z _knownhostfile ] ; then
+	if [ -d "$_srcsbinpath/.store" ] ; then
+		_knownhostfile="$_srcsbinpath/.store/knownhost"
+	else
+		_knownhostfile="$_srcsbinpath/knownhost"
+	fi
+fi
+
+function isinteractive(){
+	fd=0   # stdin
+	if [ -t "$fd" ] || [ -p /dev/stdin ] ; then
+	  return 0
+	fi
+	return 1
+}
+
+if ! isinteractive ; then
+	echo "This script can't run in non-interactive mode...exiting." 1>&2
+	exit 1
+fi
+
+if [ -z $_sshhost ] ; then
+	read -p "Please enter the hostname or ip address of ssh remote server: " _sshhost
+fi
+
+if [ ! -z $_sshhost ] ; then
+	if [ -z $_sshuser ] ; then
+		read -p "Please enter the username of the remote server: " _sshuser
+	fi
+	if [ -z $_sshuser ] ; then
+		echo "Error: no user given." 1>&2
+		exit 1
+	fi
+else
+	echo "Error: no host or ip given." 1>&2
+	exit 1
+fi
+
+_idfilename="id_dsa"
+_genkey=0
+if [ ! -s ~/.ssh/${_idfilename} ] ; then
+	_genkey=1
+else
+	read -p "A dsa key found in ~/.ssh/id_dsa . Do you want to setup multiple dsa keys? (yes/only enter to cancel) : " _newkey
+	_newkey=${_newkey,,}
+	if [ ! -z "$_newkey" ] && [ "$_newkey" = "yes" ] ; then
+		read -p "Please enter a filename for your new dsa key or only press enter to cancel: " _customname
+		if [ -z "$_customname" ] || [ -s ~/.ssh/${_customname} ] ; then
+			echo "    ERROR: No file name given or the file already exist, please retry with another name" 1>&2
+			exit 1
+		fi
+		_idfilename=${_customname}
+	       	_genkey=1	
+	fi	
+fi
+
+if [ $_genkey -eq 1 ] ; then
+	ssh-keygen -t dsa -f ~/.ssh/${_idfilename}
+fi	
+
+chmod 700 ~/.ssh
+_mykey="$(cat ~/.ssh/${_idfilename}.pub )"
+
+
+_usesudo=0
+
+if [ ! "$_sshuser" = "root" ] ; then
+	
+	read -p "If you also want to setup root user's key as a nonroot user with sudo, please type 'yes' or press enter only to cancel: "  _rootsetup
+	_rootsetup=${_rootsetup,,}
+	if [ ! -z "$_rootsetup" ] && [ "$_rootsetup" = "yes" ] ; then
+		_usesudo=1
+	fi
+	
+fi
+
+_addtoknown=0
+_addtoknownsudo=0
+_exit0=0
+_exit1=0
+
+if [ -f $_knownhostfile ] && grep -q "ssh://$_sshuser@$_sshhost$" $_knownhostfile ; then
+	read -p "Host and user: $_sshuser already known, overwrite existing (e.g. remote server reinstalled or set auto passphrase)? (yes/only enter to cancel): " _overwrite
+	_overwrite=${_overwrite,,}
+	if [ ! -z "$_overwrite" ] && [ "$_overwrite" = "yes" ] ; then
+		_addtoknown=1
+	else
+		_exit0=1
+	fi
+fi
+
+if [ "$_usesudo" -eq 1 ] && [ -f $_knownhostfile ] && grep -q "ssh://root@$_sshhost$" $_knownhostfile ; then
+	read -p "Host and user: root already known, overwrite existing (e.g remote server reinstalled or set auto passphrase)? (yes/only enter to cancel): " _overwrite
+	_overwrite=${_overwrite,,}
+	if [ ! -z "$_overwrite" ] && [ "$_overwrite" = "yes" ] ; then
+		_addtoknownsudo=1
+	else
+		_exit1=1
+	fi
+fi
+
+if [ $_exit0 -eq 1 ] && [ $_exit1 -eq 1 ] ; then
+	exit 0
+fi
+
+
+if [ $_exit0 -eq 0 ] ; then
+ssh -t $_sshuser@$_sshhost bash -c 'echo
+mkdir -p ~/.ssh
+chmod 700 ~/.ssh
+touch ~/.ssh/authorized_keys
+chmod 600 ~/.ssh/authorized_keys 
+if ! grep -Fq '\'$_mykey\'' ~/.ssh/authorized_keys ; then
+	sed -i -e '\''$''a'\\\'' ~/.ssh/authorized_keys
+	echo '$_mykey' | tee -a ~/.ssh/authorized_keys
+fi
+
+if [ '$_exit1' -ne 1 ] && [ '$_usesudo' -eq 1 ] ; then
+	rootprofile=$(eval echo ~root)
+	sudo mkdir -p $rootprofile/.ssh
+	sudo chown root:root $rootprofile/.ssh
+	sudo touch $rootprofile/.ssh/authorized_keys
+	sudo chown root:root $rootprofile/.ssh/authorized_keys
+	sudo chmod 600 $rootprofile/.ssh/authorized_keys 
+	if ! sudo grep -Fq '\'$_mykey\'' $rootprofile/.ssh/authorized_keys ; then
+		sudo sed -i -e '\''$''a'\\\'' $rootprofile/.ssh/authorized_keys
+		echo '$_mykey' | sudo tee -a $rootprofile/.ssh/authorized_keys
+	fi
+fi
+'
+	if [ $? -ne 0 ] ; then
+		echo
+		echo "	ERROR: setup in remote server failed, aborting. If the error message is saying 'Host key verification failed.' and you know the reasons of such changes(e.g. reinstalled os), you can clear the host key with 'ssh-keygen -R $_sshhost'"
+		exit 1
+	fi
+fi
+
+if [ $_exit0 -eq 1 ] && [ $_exit1 -eq 0 ] && [ "$_usesudo" -eq 1 ]  ; then
+ssh -t $_sshuser@$_sshhost bash -c 'echo
+rootprofile=$(eval echo ~root)
+sudo mkdir -p $rootprofile/.ssh
+sudo chown root:root $rootprofile/.ssh
+chmod 700 $rootprofile/.ssh
+sudo touch $rootprofile/.ssh/authorized_keys
+sudo chown root:root $rootprofile/.ssh/authorized_keys
+sudo chmod 600 $rootprofile/.ssh/authorized_keys
+ 
+if ! sudo grep -Fq '\'$_mykey\'' $rootprofile/.ssh/authorized_keys ; then
+	sudo sed -i -e '\''$''a'\\\'' $rootprofile/.ssh/authorized_keys
+	echo '$_mykey' | sudo tee -a $rootprofile/.ssh/authorized_keys
+fi
+'
+	if [ $? -ne 0 ] ; then
+		echo
+		echo "	ERROR: setup in remote server failed, aborting. If the error message is saying 'Host key verification failed.' and you know the reasons of such changes(e.g. reinstalled os), you can clear the host key with 'ssh-keygen -R $_sshhost' and run this script again."
+		exit 1
+	fi
+fi
+
+
+
+read -p "Did your dsa key requires a passhrase? type 'yes' or press enter only to cancel: " _passph
+_passph=${_passph,,}
+
+if [ ! -z "$_passph" ] && [ "$_passph" = "yes" ] ; then
+	#http://www.funtoo.org/Keychain
+	_debianbased=0
+	if grep -qiEs "Ubuntu|Debian GNU/Linux" /etc/issue ; then
+		_debianbased=1
+	fi
+	
+	if [ "$XDG_CURRENT_DESKTOP" = "" ]
+	then
+	  _desktop=$(echo "$XDG_DATA_DIRS" | sed 's/.*\(xfce\|kde\|gnome\).*/\1/')
+	else
+	  _desktop=$XDG_CURRENT_DESKTOP
+	fi
+	_addedtokeychain=1
+	if [ ! -z $_desktop ] ; then
+		echo "	INFORMATION: We detected you are on a Desktop environment. In most cases, Desktops have their own implementations of running ssh-agnet (e.g. gnome-keyring-daemon). You should depend on that because they provide support to both GUI and commandline apllications. For more info consult your Desktop docs"
+	else
+		_cmdloc=$(command -v keychain)
+		_nokeychain=1
+		if [ -z "$_cmdloc"  ] || [ ! -f ${_cmdloc} ] ; then
+			_nokeychain=0
+			if [ $_debianbased -eq 1 ]; then
+				read -p "keychain utility is not isntalled. To istall it you must be a sudoer.you want to install it? (yes/no): " _doinstall
+				_doinstall=${_doinstall,,}
+				if [ ! -z "$_doinstall" ] && [ "$_doinstall" = "yes" ] ; then
+					sudo apt-get install keychain
+					if [ $? -eq 0 ] ; then
+						_nokeychain=1
+					fi
+				else
+					echo "Ask your admnistrator to install it for you with sudo apt-get install keychain"	
+				fi
+			else
+				echo "Please install utility package 'keychain' for your distro to setup auto passphrase. e.g. for debian 'sudo apt-get install keychain'"
+
+			fi
+		fi
+		
+		if [ $_nokeychain -eq 1 ] && ! grep -q "eval \`keychain --quick --eval ${_idfilename}\`" ~/.bashrc ; then
+			sed -i -e '$a\' ~/.bashrc
+			echo "eval \`keychain --quick --eval ${_idfilename}\`" >> ~/.bashrc
+			_addedtokeychain=0
+
+		fi
+	fi
+
+	if [ $_addedtokeychain -eq 0 ] ; then	
+		echo "    IMPORTANT: logout ang login again for changes to take affect. You have to type the passphrase after every boot manually in terminal or via ssh." 1>&2
+	fi
+fi
+
+if [ $_addtoknown -eq 0 ] && ( [ ! -f $_knownhostfile ] || ! grep -Fq "ssh://$_sshuser@$_sshhost"  $_knownhostfile ) ; then
+	if [ -f $_knownhostfile ] ; then
+		sed -i -e '$a\' $_knownhostfile
+	fi	
+	echo "ssh://$_sshuser@$_sshhost" >> $_knownhostfile
+fi
+if [ $_addtoknownsudo -eq 0 ] && ( [ ! -f $_knownhostfile ] || ! grep -Fq "ssh://root@$_sshhost"  $_knownhostfile ) ; then
+	sed -i -e '$a\' $_srcsbinpath/knownhost
+	echo "ssh://root@$_sshhost" >> $_knownhostfile
+fi
+
+echo "   INFORMATION: Now check, you can login without password or not. Make sure the remote ~/.ssh dirrectory and the ~/.ssh/authorized_keys file is owned ang groupowned by the respective username with 'stat' command. If everything ok, its time to change your ssh password to something too difficult with 'passwd' command and keep it in bank vault or lock your account password with 'passwd -l username', so none can enter your system with password."
+exit 0

@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+#Copyright (C) 2015  Helal Uddin <helal00 at gmail.com>
+#This program is free software: you can redistribute it and/or modify
+#it under the terms of the GNU General Public License as published by
+#the Free Software Foundation, either version 3 of the License, or
+#(at your option) any later version.
+#
+#This program is distributed in the hope that it will be useful,
+#but WITHOUT ANY WARRANTY; without even the implied warranty of
+#MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#GNU General Public License for more details.
+#
+#You should have received a copy of the GNU General Public License
+#along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+_srcsbinpath=$(dirname $(readlink -f $0))
+
+#write out current crontab
+crontab -l > $_srcsbinpath/mycron
+if grep -q "$_srcsbinpath/runmountservers" $_srcsbinpath/mycron ; then
+	grep -v "$_srcsbinpath/runmountservers" $_srcsbinpath/mycron > $_srcsbinpath/mycronnew
+	#install new cron file
+	crontab $_srcsbinpath/mycronnew
+	echo "$_srcsbinpath/runmountservers removed from crontab!!"
+else
+	echo "$_srcsbinpath/runmountservers doesn't exist in crontab!!"
+fi
+rm -rf $_srcsbinpath/mycron
+rm -rf $_srcsbinpath/mycronnew

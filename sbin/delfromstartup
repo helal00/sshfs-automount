@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+#Copyright (C) 2015  Helal Uddin <helal00 at gmail.com>
+#This program is free software: you can redistribute it and/or modify
+#it under the terms of the GNU General Public License as published by
+#the Free Software Foundation, either version 3 of the License, or
+#(at your option) any later version.
+#
+#This program is distributed in the hope that it will be useful,
+#but WITHOUT ANY WARRANTY; without even the implied warranty of
+#MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#GNU General Public License for more details.
+#
+#You should have received a copy of the GNU General Public License
+#along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+_srcsbinpath=$(dirname $(readlink -f $0))
+_srchomepath=$(dirname $_srcsbinpath)
+
+if [ -s "$_srcsbinpath/functions" ] ; then
+	. $_srcsbinpath/functions	
+else
+	echo "$_srcsbinpath/functions file not found!" 1>&2
+	exit 1
+fi
+
+_startupfile="$(eval echo $1)"
+if [ -z "$_startupfile" ] ; then
+	_startupfile="$(eval echo ~/.profile)"
+fi
+
+if _grepline=$(grep -F "nohup $_srcsbinpath/runmountservers atstartup" "$_startupfile") ; then
+	if [ "${_grepline:0:1}" != "#" ] ; then
+		replaceline "$(escapepath "nohup $_srcsbinpath/runmountservers atstartup")" "#nohup $_srcsbinpath/runmountservers atstartup &" "$_startupfile"
+	fi
+fi

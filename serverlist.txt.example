@@ -1,0 +1,4 @@
+#remmote_path|local_mount_path|long(optional, long cache)|7200(optional, seconds to long cache timeout. Default for long cache is 7200 sec.)
+#root@2.3.1.21:/|~/mymounts/mainserver
+#root@12.3.8.18:/|~/mymounts/mailserver
+#root@7.1.18.2:/|~/mymounts/server
