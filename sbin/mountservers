@@ -167,7 +167,7 @@ do
 			continue
 		else
 			read -p "$_sshurl : host or user is not known. Press any key to run sshsetup....."
-			bash $_srcsbinpath/sshsetup "$_sshhost" "$_sshuser" "$_srcsbinpath/.store/knownhost"
+			bash "$_sshsetup" "$_sshhost" "$_sshuser" "$_srcsbinpath/.store/knownhost"
 			if [ $? -ne 0 ] ; then
 				echo "sshsetup failed, pls try again with '$_srcsbinpath/sshsetup' command to continue." 1>&2
 				continue

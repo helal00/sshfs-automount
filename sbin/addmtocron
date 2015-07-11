@@ -16,10 +16,15 @@
 _srcsbinpath=$(dirname $(readlink -f $0))
 _srchomepath=$(dirname $_srcsbinpath) 
 
+if [ ! -d "$_srcsbinpath/.store" ] ; then
+	echo "The prgram is not yet ready to run as cron. Please run $_srcsbinpath/mountservers first." 1>&2
+	exit 1
+fi
+
 _min=$1
 _defaultmin=20
 if [ -z "$_min" ] ; then
-read -p "$_srcsbinpath/runmountservers will run every how many minute? Type minute between [0-59] or only press enter to take default $_defaultmin minutes: " _hour
+read -p "$_srcsbinpath/runmountservers will run every how many minute? Type minute between [0-59] or only press enter to take default $_defaultmin minutes: " _min
 fi
 if [ -n "$_min" ] && echo "$_min" | grep -q "^-\?[0-9]*$" && [ "$_min" -ge 0 ] && [ "$_min" -le 59 ] ; then
 	_interval="$_min"
@@ -33,16 +38,16 @@ else
 	echo "	ERROR: No ssh-agent is currently running, sshfs will fail to connect remote servers automiatically without password" 1>&2
 fi
 #write out current crontab
-crontab -l > $_srcsbinpath/mycron
+crontab -l > $_srcsbinpath/.store/mycron
 #echo new cron into cron file
-if ! grep -q "$_srcsbinpath/runmountservers" $_srcsbinpath/mycron ; then
+if ! grep -q "$_srcsbinpath/runmountservers" $_srcsbinpath/.store/mycron ; then
 
-	echo "*/$_interval * * * * $_srcsbinpath/runmountservers" >> $_srcsbinpath/mycron
+	echo "*/$_interval * * * * $_srcsbinpath/runmountservers" >> $_srcsbinpath/.store/mycron
 	#install new cron file
-	crontab $_srcsbinpath/mycron
-	echo "$_srcsbinpath/runmountservers added to crontab successfully for every $_interval minute!!"
+	crontab $_srcsbinpath/.store/mycron
+	echo "$_srcsbinpath/runmountservers added to crontab successfully for every $_interval minutes!!"
 else
 	echo "	WARNING: $_srcsbinpath/runmountservers already exist in crontab, no changes has been made!! To apply changes, please remove the existing job first with '$_srcsbinpath/delmcron' command." 1>&2	
 fi
-rm $_srcsbinpath/mycron
+rm $_srcsbinpath/.store/mycron
 

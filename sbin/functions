@@ -13,6 +13,44 @@
 #You should have received a copy of the GNU General Public License
 #along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+_miscpath=""
+function addmiscpath(){
+	local _var _com _comloc
+	_com=$1
+	_var="_${1}"
+	_comloc=$2
+	if [ -z "$_comloc" ] || [ ! -x "$_comloc" ]; then 
+		_comloc=$(command -v "$_com")
+	fi
+	if [ -z "$_comloc" ] ; then
+		echo "	ERROR: linux-misc/$_com command not found in your system. Please install it from https://github.com/helal00/linux-misc before continue. If the command is already installed, plese specify it in $_miscpath with adding a line as '$_var=/path/to/$_com'. Create the file if doesn't exist already."
+		return 1
+	else		
+		if ! grep -Fq "$_var=" "$_miscpath" ; then
+			sed -i -e '$a\' "$_miscpath"
+			echo "$_var=$_comloc" >> "$_miscpath"
+		fi
+		echo "$_comloc"
+	fi
+	return 0
+}
+
+if [ ! -z "$_srcsbinpath" ]; then
+	_miscpath="$_srcsbinpath/.store/linux-misc"
+	if [ -s "$_miscpath" ] ; then
+		. "$_miscpath"
+	fi
+	
+	if ! _calloutput=$(addmiscpath "sshsetup" "$_sshsetup") ; then
+		echo "$_calloutput" 1>&2
+		exit 1
+	else
+		_sshsetup="$_calloutput" 1>&2
+	fi
+fi
+
+
+
 function escapepath(){
 	local _thep
 	_thep=$1
