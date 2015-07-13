@@ -17,7 +17,12 @@
 _srcsbinpath=$(dirname $(readlink -f $0))
 _srchomepath=$(dirname $_srcsbinpath)
 _serverlistfile="serverlist.txt"
-mkdir -p "$_srcsbinpath/.store"
+_storeexist=1
+if [ -d "$_srcsbinpath/.store" ] ; then
+	_storeexist=0
+else
+	mkdir -p "$_srcsbinpath/.store"
+fi
 _mountedfile="$_srcsbinpath/.store/mounted"
 _deafultcachetime="7200"
 _userhome=$HOME
@@ -26,6 +31,9 @@ if [ -s "$_srcsbinpath/functions" ] ; then
 	. $_srcsbinpath/functions	
 else
 	echo "$_srcsbinpath/functions file not found!" 1>&2
+	if [ "$_storeexist" -eq 1 ] ; then
+		rm -rf "$_srcsbinpath/.store"
+	fi
 	exit 1
 fi
 
@@ -50,21 +58,33 @@ if [ -z "$_sshfs" ] ; then
 	if [ ! -z "$_osname" ] ; then
 		if [ "$_osname" != "debian" ] && [ "$_osname" != "ubuntu" ] ; then
 			echo "	ERROR: Operating system not officially supported, sshfs need to be installed by yourself. Fully supported version is Debian 7 (wheezy) or Ubuntu 14.04 (truesty) or up. Please install sshfs for your distro to use this utility. e.g. sudo apt-get -y install sshfs" 1>&2
+			if [ "$_storeexist" -eq 1 ] ; then
+				rm -rf "$_srcsbinpath/.store"
+			fi
 			exit 1
 		else
 			if [ ! -z "$_runascron" ] ; then
 				echo "sshfs not installed, we can't install now as this script is running as cron job. Please run it from terminal to install sshfs." 1>&2
+				if [ "$_storeexist" -eq 1 ] ; then
+					rm -rf "$_srcsbinpath/.store"
+				fi
 				exit 1
 			else
 				sudo apt-get -y install sshfs
 				if [ $? -ne 0 ] ; then
 					echo "sshfs can't be installed properly, there is some error. Please install it yourselft to continue." 1>&2
+					if [ "$_storeexist" -eq 1 ] ; then
+						rm -rf "$_srcsbinpath/.store"
+					fi
 					exit 1
 				fi
 			fi
 		fi
 	else
 		echo "	ERROR: Operating system not supported, sshfs need to be installed by yourself. Fully supported version is Debian 7 (wheezy) or Ubuntu 14.04 (truesty) or up. Please install sshfs for your distro to use this utility. e.g. sudo apt-get -y install sshfs" 1>&2
+		if [ "$_storeexist" -eq 1 ] ; then
+			rm -rf "$_srcsbinpath/.store"
+		fi
 		exit 1
 	fi
 fi
@@ -77,6 +97,9 @@ elif [ -f "$_userhome/$_serverlistfile" ] ; then
 	_serverlist="$_userhome/$_serverlistfile"
 else
 	echo "No $_serverlistfile file found in current, previuos or home directory. Create $_serverlistfile file in any of those locations and enter server info as 'user@xxx.xxx.xxx.xxx:/|~/mymounts/mainserver[|long[|time in seconds]]' per line. Things in [] is optional."
+	if [ "$_storeexist" -eq 1 ] ; then
+		rm -rf "$_srcsbinpath/.store"
+	fi
 	exit 1
 fi
 
@@ -112,6 +135,9 @@ fi
 
 if [ -z "$SSH_AUTH_SOCK" ] ; then
 	echo "	ERROR: No ssh-agent is currently running for $(whoami), sshfs will fail to connect remote servers automiatically without password" 1>&2
+	if [ "$_storeexist" -eq 1 ] ; then
+		rm -rf "$_srcsbinpath/.store"
+	fi
 	exit 1
 else
 	echo "$SSH_AUTH_SOCK" > $_srcsbinpath/.store/agentpattern
@@ -209,14 +235,14 @@ do
 		fi
 
 		if [ ! -f "$_mountedfile" ] || ! grep -q "$_mpath$"  "$_mountedfile" ; then
-				sed -i -e '$a\' "$_mountedfile"
+				[ -f "$_mountedfile" ] && sed -i -e '$a\' "$_mountedfile"
 				echo "$_mpath" >> "$_mountedfile"
 		fi
 	else
 		if [ -d "$_mpath" ] ; then
 			echo "The path : $_mpath is already a mount point."
 			if [ ! -f "$_mountedfile" ] || ! grep -Fq "$_mpath"  "$_mountedfile" ; then
-				sed -i -e '$a\' "$_mountedfile"
+				[ -f "$_mountedfile" ] && sed -i -e '$a\' "$_mountedfile"
 				echo "$_mpath" >> "$_mountedfile"
 			fi
 		else

@@ -1,0 +1,3 @@
+[submodule "linux-misc"]
+	path = linux-misc
+	url = https://github.com/helal00/linux-misc

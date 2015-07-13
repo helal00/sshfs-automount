@@ -13,115 +13,18 @@
 #You should have received a copy of the GNU General Public License
 #along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-_miscpath=""
-function addmiscpath(){
-	local _var _com _comloc
-	_com=$1
-	_var="_${1}"
-	_comloc=$2
-	if [ -z "$_comloc" ] || [ ! -x "$_comloc" ]; then 
-		_comloc=$(command -v "$_com")
-	fi
-	if [ -z "$_comloc" ] ; then
-		echo "	ERROR: linux-misc/$_com command not found in your system. Please install it from https://github.com/helal00/linux-misc before continue. If the command is already installed, plese specify it in $_miscpath with adding a line as '$_var=/path/to/$_com'. Create the file if doesn't exist already."
-		return 1
-	else		
-		if ! grep -Fq "$_var=" "$_miscpath" ; then
-			sed -i -e '$a\' "$_miscpath"
-			echo "$_var=$_comloc" >> "$_miscpath"
-		fi
-		echo "$_comloc"
-	fi
-	return 0
-}
+declare -a _requiredfiles
+declare -a _requiredexefiles
 
-if [ ! -z "$_srcsbinpath" ]; then
-	_miscpath="$_srcsbinpath/.store/linux-misc"
-	if [ -s "$_miscpath" ] ; then
-		. "$_miscpath"
-	fi
-	
-	if ! _calloutput=$(addmiscpath "sshsetup" "$_sshsetup") ; then
-		echo "$_calloutput" 1>&2
-		exit 1
+_requiredfiles[${#_requiredfiles[@]}]="functions"
+_requiredexefiles[${#_requiredexefiles[@]}]="sshsetup"
+
+if [ ! -z "$_srcsbinpath" ] ; then
+	if [ -s "$_srcsbinpath/resolve" ] ; then
+		. $_srcsbinpath/resolve	
 	else
-		_sshsetup="$_calloutput" 1>&2
+		echo "$_srcsbinpath/resolve file not found!" 1>&2
+		exit 1
 	fi
 fi
 
-
-
-function escapepath(){
-	local _thep
-	_thep=$1
-	_thep=${_thep//\//\\/}
-	echo "$_thep"
-}
-
-function replaceline(){
-	local _pattern _replace _file
-	_pattern=$1
-	_replace=$2
-	_file=$3
-	sed -i "/$_pattern/ { c \
-	$_replace
-	}" "$_file"
-}
-
-function getowner(){
-	local _entry	
-	_entry="$1"	
-	if [ -z "$_entry" ] ||  [ ! -e "$_entry" ] ; then
-		echo ""
-	else
-		if [ -d "$_entry" ] ; then
-			echo $(ls -al "$_entry" | grep ' \.$' | awk '{print $3}')
-		else
-			echo $(ls -al "$_entry" | awk '{print $3}') 
-		fi
-	fi
-}
-
-function getnewest(){
-	
-	local _loc _pat _new _setvar _owner _ret
-	_loc=$1
-	_pat=$2
-	_setvar=$3
-	_owner=$4
-	
-	#echo "this $_loc $_pat $_setvar"
-	_ret=1
-	_new=""
-	for sp in $(ls -a ${_loc} | grep "${_pat}")
-	do
-		if [ -z "$_new" ] || [ "${_loc}/$sp" -nt "${_loc}/$_new" ] ; then
-			if [ ! -z "$_owner" ] ; then		
-				if [ "$_owner" = $(getowner "${_loc}/$_new") ] ; then
-					_new=$sp
-				fi
-			else
-				_new=$sp
-			fi
-		fi
-	done
-	if [ ! -z "$_new" ] ; then
-		eval $_setvar=${_loc}/$_new
-		_ret=0
-	fi
-	
-	return $_ret
-}
-
-function strtoarry(){
-	local _str _retarray _deli _c _l;_str=$1 _retarray=$2 _deli=$3
-	eval unset $_retarray
-	_c=-1;while read -r _l; do _c=$((_c+1));eval $_retarray[$_c]='$_l';done <<< "$(echo $_str | sed -e "s/$_deli/\n/g")"
-}
-
-function getosname(){
-	if [ -f /etc/os-release ] ; then
-		eval $(cat /etc/os-release | grep "ID")
-		echo $ID
-	fi
-}

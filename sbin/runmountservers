@@ -15,7 +15,10 @@
 
 _srcsbinpath=$(dirname $(readlink -f $0))
 _srchomepath=$(dirname $_srcsbinpath) 
-
+if [ ! -d "$_srcsbinpath/.store" ] ; then
+	echo "The prgram is not yet ready to run. Please run $_srcsbinpath/mountservers first." 1>&2
+	exit 1
+fi
 _isatstartup=$1
 
 if [ "$_isatstartup" = "atstartup" ] ; then

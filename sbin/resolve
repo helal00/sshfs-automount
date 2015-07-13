@@ -1,0 +1,166 @@
+#!/usr/bin/env bash
+#Copyright (C) 2015  Helal Uddin <helal00 at gmail.com>
+#This program is free software: you can redistribute it and/or modify
+#it under the terms of the GNU General Public License as published by
+#the Free Software Foundation, either version 3 of the License, or
+#(at your option) any later version.
+#
+#This program is distributed in the hope that it will be useful,
+#but WITHOUT ANY WARRANTY; without even the implied warranty of
+#MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#GNU General Public License for more details.
+#
+#You should have received a copy of the GNU General Public License
+#along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+if [ -z "$_srcsbinpath" ] ; then
+_srcsbinpath=$(dirname $(readlink -f $0))
+fi
+if [ -z "$_srchomepath" ] ; then
+_srchomepath=$(dirname $_srcsbinpath)
+fi
+
+_hasgitinit=1
+_miscpathori=""
+_miscpath=""
+_miscerror=1
+_miscfilenotfound=1
+
+function dresolved(){
+	local _retval _miscp
+	_miscp="$1"
+	_retval=0
+	for rfile in "${_requiredfiles[@]}"
+	do
+		if [ ! -s "$_miscp/$rfile" ] ; then
+			echo "file $_miscp/$rfile not found or empty."
+			return 1
+		fi
+	done
+
+	for rexefile in "${_requiredexefiles[@]}"
+	do
+		if [ ! -s "$_miscp/$rexefile" ] || [ ! -x "$_miscp/$rexefile" ] ; then
+			echo "Executable file $_miscp/$rexefile not found or empty."
+			return 1
+		fi
+	done
+	return $_retval
+}
+
+if [ ! -z "$_srcsbinpath" ] && [ -z "$_srchomepath" ] ; then
+	_miscpath="$_srcsbinpath/linux-misc"
+	_miscpathori="$_srcsbinpath/linux-misc"
+	if [ -d "$_srcsbinpath/.git" ] ; then
+		_hasgitinit=0
+	fi
+elif [ ! -z "$_srcsbinpath" ] && [ ! -z "$_srchomepath" ] ; then
+	_miscpath="$_srchomepath/linux-misc"
+	_miscpathori="$_srchomepath/linux-misc"
+	if [ -d "$_srchomepath/.git" ] ; then
+		_hasgitinit=0
+	fi
+fi
+
+if [ -z "$(ls -A $_miscpath)" ] ; then
+	if [ -d "$(dirname $(dirname "$_miscpath"))/linux-misc" ] && [ ! -z "$(ls -A "$(dirname $(dirname "$_miscpath"))/linux-misc")" ]; then
+		_miscpath="$(dirname $(dirname "$_miscpath"))/linux-misc"
+	fi
+fi
+
+
+
+if [ -s "$_miscpath/linux-misc-path" ] ; then
+	_miscloc=$(cat "$_miscpath/linux-misc-path")
+	if [ ! -z "$_miscloc" ] ; then
+		_miscpath="$_miscloc" 
+	fi
+fi
+
+if ! _derrmsg=$(dresolved $_miscpath) ; then
+	echo "$_derrmsg" 1>&2
+	_miscfilenotfound=0
+else
+	for rfile in "${_requiredfiles[@]}"
+	do
+		. "$_miscpath/$rfile"
+	done
+	for rexefile in "${_requiredexefiles[@]}"
+	do
+		eval "_${rexefile}=$_miscpath/$rexefile"
+	done
+fi
+
+
+
+if [ -z "$(ls -A $_miscpath)" ] || [ "$_miscfilenotfound" -eq 0 ] ; then
+	echo "	IMPORTANT: Required 'linux-misc' repo from https://github.com/helal00/linux-misc is not found. If you had already cloned/downloaded the repo somewhere else, please create a file '$_miscpathori/linux-misc-path' and specify the absolute path ( e.g. /some/path/to/linux-misc ) on the first line of that file." 1>&2
+	if [ "$_hasgitinit" -eq 0 ] && [ -s "$(dirname $_miscpath)/.gitmodules" ] && [ ! -z "$(command -v "git")" ]; then
+		read -p " or Do you want us to clone linux-misc with git?(yes/enter only to quit): " _clonesubmdle
+		_clonesubmdle=${_clonesubmdle,,}
+		if [ ! -z "$_clonesubmdle" ] && [ "$_clonesubmdle" = "yes" ] ; then
+			_curPWD="$PWD"
+			cd "$(dirname $_miscpathori)"
+			git submodule init || _miscerror=0
+			git submodule update || _miscerror=0
+			cd "$_curPWD"
+			if [ "$_miscerror" -ne 0 ] && ! _derrmsg=$(dresolved $_miscpathori) ; then
+				echo "$_derrmsg" 1>&2
+				_miscerror=0
+			else
+				for rfile in "${_requiredfiles[@]}"
+				do
+					. "$_miscpathori/$rfile"
+				done
+				for rexefile in "${_requiredexefiles[@]}"
+				do
+					eval "_${rexefile}=$_miscpathori/$rexefile"
+				done
+			fi
+		else
+			_miscerror=0
+		fi
+		if [ "$_miscerror" -eq 0 ] ; then
+			echo "	IMPORTANT: Please update the repo from https://github.com/helal00/linux-misc at $_miscpathori with 'git submodule init && git submodule update' before continue." 2>&1
+			exit 1
+		fi
+	else
+		if [ ! -z "$(command -v "wget")" ] && [ ! -z "$(command -v "tar")" ]; then
+			read -p " or Do you want us to download linux-misc?(yes/enter only to quit): " _downloadlnxmsc
+			_downloadlnxmsc=${_downloadlnxmsc,,}
+			if [ ! -z "$_downloadlnxmsc" ] && [ "$_downloadlnxmsc" = "yes" ] ; then
+				rm -rf "$_miscpathori" "$(dirname $_miscpathori)/master.tar.gz"
+				wget -q --no-check-certificate "https://github.com/helal00/linux-misc/archive/master.tar.gz" --directory-prefix="$(dirname $_miscpathori)/"
+				if [ -s "$(dirname $_miscpathori)/master.tar.gz" ] ; then
+					tar -xzf "$(dirname $_miscpathori)/master.tar.gz" -C "$(dirname $_miscpathori)/"
+					rm -rf "$(dirname $_miscpathori)/master.tar.gz"
+					mv "$(dirname $_miscpathori)/linux-misc-master" "$_miscpathori"
+					if ! _derrmsg=$(dresolved $_miscpathori) ; then
+						echo "$_derrmsg" 1>&2
+						_miscerror=0
+					else
+						for rfile in "${_requiredfiles[@]}"
+						do
+							. "$_miscpathori/$rfile"
+						done
+						for rexefile in "${_requiredexefiles[@]}"
+						do
+							eval "_${rexefile}=$_miscpathori/$rexefile"
+						done
+					fi
+				else
+					_miscerror=0
+				fi
+			else
+				_miscerror=0
+			fi
+		else
+			_miscerror=0
+		fi
+		
+		if [ "$_miscerror" -eq 0 ] ; then
+			echo "	IMPORTANT: Please download from https://github.com/helal00/linux-misc/archive/master.tar.gz and extract it to $_miscpathori to continue." 2>&1
+			exit 1
+		fi
+	fi	
+fi

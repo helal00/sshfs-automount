@@ -15,6 +15,11 @@
 
 _srcsbinpath=$(dirname $(readlink -f $0))
 
+if [ ! -d "$_srcsbinpath/.store" ] ; then
+	echo "The prgram is not yet ready to run. Please run $_srcsbinpath/mountservers first." 1>&2
+	exit 1
+fi
+
 #write out current crontab
 crontab -l > $_srcsbinpath/mycron
 if grep -q "$_srcsbinpath/runmountservers" $_srcsbinpath/mycron ; then
