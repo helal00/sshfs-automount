@@ -16,9 +16,6 @@
 if [ -z "$_srcsbinpath" ] ; then
 _srcsbinpath=$(dirname $(readlink -f $0))
 fi
-if [ -z "$_srchomepath" ] ; then
-_srchomepath=$(dirname $_srcsbinpath)
-fi
 
 _hasgitinit=1
 _miscpathori=""
@@ -60,6 +57,10 @@ elif [ ! -z "$_srcsbinpath" ] && [ ! -z "$_srchomepath" ] ; then
 	if [ -d "$_srchomepath/.git" ] ; then
 		_hasgitinit=0
 	fi
+fi
+
+if [ -z "$_srchomepath" ] ; then
+_srchomepath=$(dirname $_srcsbinpath)
 fi
 
 if [ -z "$(ls -A $_miscpath)" ] ; then
